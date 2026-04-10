@@ -18,34 +18,20 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Download Tools
-        run: |
-          # 下载 apktool
-          wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O /usr/local/bin/apktool
-          chmod +x /usr/local/bin/apktool
-
-          # 下载 apktool jar
-          wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O /usr/local/bin/apktool.jar
-
       - name: Download AutoX APK
         run: |
-          # 尝试多个下载源
-          curl -L -o autox.apk "https://gitee.com/mirrors/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
-          curl -L -o autox.apk "https://github.com/AutoX-Android/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
-          echo "Trying alternative source..."
+          # 从 Gitee 镜像下载
+          curl -L -o autox.apk "https://gitee.com/petterobam/AutoX-docker/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
+          curl -L -o autox.apk "https://hub.nuaa.cf/kkevsekk1/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
+          curl -L -o autox.apk "https://github.com/nicepkg/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
+          echo "All downloads failed"
 
-          # 检查文件是否下载成功
-          if [ -f autox.apk ] && [ -s autox.apk ]; then
-            echo "APK downloaded: $(ls -lh autox.apk)"
-          else
-            echo "Download failed, creating minimal APK"
-            exit 1
-          fi
+          ls -lh autox.apk || exit 1
 
       - name: Inject Script
         run: |
-          # 解包
-          apktool d autox.apk -o unpacked -f
+          # 解压 APK
+          unzip autox.apk -d unpacked
 
           # 创建项目目录
           mkdir -p unpacked/assets/project
@@ -54,21 +40,26 @@ jobs:
           cp main.js unpacked/assets/project/main.js
 
           # 创建配置
-          echo '{"name":"抖音自动化","versionName":"1.0.0","versionCode":1,"packageName":"com.douyin.auto","ignore":[],"launchConfig":{"hideLogs":false}}' > unpacked/assets/project/config.json
+          cat > unpacked/assets/project/config.json << 'EOF'
+          {"name":"抖音自动化","versionName":"1.0.0","versionCode":1,"packageName":"com.douyin.auto"}
+          EOF
 
           # 重新打包
-          apktool b unpacked -o douyin-auto-unsigned.apk
+          cd unpacked
+          zip -r ../douyin-auto-unsigned.apk .
+          cd ..
 
       - name: Sign APK
         run: |
           # 生成签名密钥
-          keytool -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-key -storepass password -keypass password -dname "CN=Test, OU=Test, O=Test, L=Test, S=Test, C=US"
+          keytool -genkey -v -keystore my-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-key -storepass 123456 -keypass 123456 -dname "CN=Test"
 
-          # 签名 APK
-          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore my-release-key.jks -storepass password -keypass password douyin-auto-unsigned.apk my-key
+          # 对齐
+          zipalign -v 4 douyin-auto-unsigned.apk douyin-auto-aligned.apk || cp douyin-auto-unsigned.apk douyin-auto-aligned.apk
 
-          # 重命名
-          mv douyin-auto-unsigned.apk douyin-auto.apk
+          # 签名
+          apksigner sign --ks my-key.jks --ks-pass pass:123456 --key-pass pass:123456 --out douyin-auto.apk douyin-auto-aligned.apk || \
+          jarsigner -verbose -keystore my-key.jks -storepass 123456 -keypass 123456 douyin-auto-aligned.apk my-key && mv douyin-auto-aligned.apk douyin-auto.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
