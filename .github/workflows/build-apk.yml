@@ -18,28 +18,57 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Download Tools
+        run: |
+          # 下载 apktool
+          wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O /usr/local/bin/apktool
+          chmod +x /usr/local/bin/apktool
+
+          # 下载 apktool jar
+          wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O /usr/local/bin/apktool.jar
+
       - name: Download AutoX APK
         run: |
-          # 从 gitee 镜像下载 AutoX APK
+          # 尝试多个下载源
           curl -L -o autox.apk "https://gitee.com/mirrors/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
           curl -L -o autox.apk "https://github.com/AutoX-Android/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
-          echo "Download failed, trying alternative..."
+          echo "Trying alternative source..."
 
-      - name: Prepare APK
+          # 检查文件是否下载成功
+          if [ -f autox.apk ] && [ -s autox.apk ]; then
+            echo "APK downloaded: $(ls -lh autox.apk)"
+          else
+            echo "Download failed, creating minimal APK"
+            exit 1
+          fi
+
+      - name: Inject Script
         run: |
-          # 安装 apktool
-          sudo apt-get install -y apktool
-          
-          # 解包 APK
-          apktool d autox.apk -o autox_unpacked
-          
-          # 注入脚本
-          mkdir -p autox_unpacked/assets/project
-          cp main.js autox_unpacked/assets/project/main.js
-          echo '{"name":"抖音自动化","versionName":"1.0.0","versionCode":1,"packageName":"com.douyin.auto"}' > autox_unpacked/assets/project/config.json
-          
+          # 解包
+          apktool d autox.apk -o unpacked -f
+
+          # 创建项目目录
+          mkdir -p unpacked/assets/project
+
+          # 复制脚本
+          cp main.js unpacked/assets/project/main.js
+
+          # 创建配置
+          echo '{"name":"抖音自动化","versionName":"1.0.0","versionCode":1,"packageName":"com.douyin.auto","ignore":[],"launchConfig":{"hideLogs":false}}' > unpacked/assets/project/config.json
+
           # 重新打包
-          apktool b autox_unpacked -o douyin-auto.apk
+          apktool b unpacked -o douyin-auto-unsigned.apk
+
+      - name: Sign APK
+        run: |
+          # 生成签名密钥
+          keytool -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my-key -storepass password -keypass password -dname "CN=Test, OU=Test, O=Test, L=Test, S=Test, C=US"
+
+          # 签名 APK
+          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore my-release-key.jks -storepass password -keypass password douyin-auto-unsigned.apk my-key
+
+          # 重命名
+          mv douyin-auto-unsigned.apk douyin-auto.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
