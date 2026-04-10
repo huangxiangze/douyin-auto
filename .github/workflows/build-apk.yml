@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download AutoX Template
+        run: |
+          git clone --depth 1 https://github.com/kkevsekk1/AutoX.git AutoX
+
+      - name: Prepare Project
+        run: |
+          # 创建项目目录
+          mkdir -p app/src/main/assets/project
+          
+          # 复制脚本
+          cp main.js app/src/main/assets/project/main.js
+          
+          # 创建项目配置
+          echo '{"name":"抖音自动化","versionName":"1.0.0","versionCode":1,"packageName":"com.douyin.auto"}' > app/src/main/assets/project/config.json
+
+      - name: Build APK
+        run: |
+          cd AutoX
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+        continue-on-error: true
+
+      - name: Find APK
+        run: |
+          find AutoX -name "*.apk" -type f 2>/dev/null || echo "No APK found"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: douyin-auto-apk
+          path: AutoX/app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
