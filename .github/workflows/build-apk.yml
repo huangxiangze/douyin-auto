@@ -18,38 +18,31 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Download AutoX Template
+      - name: Download AutoX APK
         run: |
-          git clone --depth 1 https://github.com/kkevsekk1/AutoX.git AutoX
+          # 从 gitee 镜像下载 AutoX APK
+          curl -L -o autox.apk "https://gitee.com/mirrors/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
+          curl -L -o autox.apk "https://github.com/AutoX-Android/AutoX/releases/download/v6.5.5/app-v6.5.5-release-unsigned.apk" || \
+          echo "Download failed, trying alternative..."
 
-      - name: Prepare Project
+      - name: Prepare APK
         run: |
-          # 创建项目目录
-          mkdir -p app/src/main/assets/project
+          # 安装 apktool
+          sudo apt-get install -y apktool
           
-          # 复制脚本
-          cp main.js app/src/main/assets/project/main.js
+          # 解包 APK
+          apktool d autox.apk -o autox_unpacked
           
-          # 创建项目配置
-          echo '{"name":"抖音自动化","versionName":"1.0.0","versionCode":1,"packageName":"com.douyin.auto"}' > app/src/main/assets/project/config.json
-
-      - name: Build APK
-        run: |
-          cd AutoX
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
-        continue-on-error: true
-
-      - name: Find APK
-        run: |
-          find AutoX -name "*.apk" -type f 2>/dev/null || echo "No APK found"
+          # 注入脚本
+          mkdir -p autox_unpacked/assets/project
+          cp main.js autox_unpacked/assets/project/main.js
+          echo '{"name":"抖音自动化","versionName":"1.0.0","versionCode":1,"packageName":"com.douyin.auto"}' > autox_unpacked/assets/project/config.json
+          
+          # 重新打包
+          apktool b autox_unpacked -o douyin-auto.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: douyin-auto-apk
-          path: AutoX/app/build/outputs/apk/release/*.apk
-          if-no-files-found: warn
+          path: douyin-auto.apk
